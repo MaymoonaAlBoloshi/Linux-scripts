@@ -1,0 +1,4 @@
+#!/usr/bin/bash
+bluetoothctl trust 20:20:01:6A:40:21
+bluetoothctl disconnect 20:20:01:6A:40:21
+bluetoothctl connect 20:20:01:6A:40:21
