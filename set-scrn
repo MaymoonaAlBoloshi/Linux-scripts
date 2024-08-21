@@ -5,63 +5,127 @@ display_current_setup() {
     xrandr --listmonitors
 }
 
-# Set laptop screen as primary
-xrandr --output eDP-1 --primary
+# Function to get connected screens
+get_connected_screens() {
+    xrandr | grep " connected" | awk '{ print $1 }'
+}
 
-while true; do
-    clear
-    echo "Current screen setup:"
-    display_current_setup
-    echo
-
-    # Get connected screens other than the laptop screen with status
-    screens=$(xrandr | grep " connected" | grep -v "eDP-1" | awk '{ print $1 }')
-
-    screen_info=()
+# Function to get screen details for display
+get_screen_info() {
+    local screens=$1
+    local screen_info=()
     for screen in $screens; do
+        local mode
         mode=$(xrandr --query | grep -A1 "^$screen connected" | tail -n1 | awk '{print $1}')
         if [ "$mode" == "disconnected" ]; then
-            status="not in use"
+            screen_info+=("$screen: not in use")
         else
-            status="in use, $mode"
+            screen_info+=("$screen: in use, $mode")
         fi
-        screen_info+=("$screen ($status)")
     done
+    echo "${screen_info[@]}"
+}
 
-    if [ -z "$screens" ]; then
-        echo "No additional screens connected."
+# Function to update breadcrumb
+update_breadcrumb() {
+    breadcrumb="$1 > $2 > $3"
+    if [ -n "$4" ]; then
+        breadcrumb+=" > $4"
+    fi
+}
+
+# Initialize breadcrumb
+breadcrumb="Screen Management"
+
+# Main loop
+while true; do
+    # Get connected screens
+    connected_screens=$(get_connected_screens)
+
+    if [ -z "$connected_screens" ]; then
+        echo "No screens connected."
         exit 1
     fi
 
-    # Use fzf to select a screen
-    selected_screen=$(echo "${screen_info[@]}" | tr ' ' '\n' | fzf --prompt="Select a screen: " | awk -F ' ' '{print $1}')
+    # Display available screen details
+    screen_details=$(get_screen_info "$connected_screens")
+
+    # Simplified inline preview for testing
+    selected_screen=$(echo "$connected_screens" | tr ' ' '\n' | fzf --border --padding 1 --margin 1 --prompt="Select a screen: " --bind "j:down,k:up,q:abort" --preview "echo 'Mode: $breadcrumb\n\nCurrent screen setup:\n$(xrandr --listmonitors)\n\nControls: Use arrow keys or j/k to move, Enter to select, q to quit.'" --preview-window=down:15)
 
     if [ -z "$selected_screen" ]; then
         echo "No screen selected."
         exit 1
     fi
 
-    # Use fzf to select an action
-    action=$(echo -e "Mirror\nExtend\nExit" | fzf --prompt="Select action: ")
+    update_breadcrumb "Screen Management" "$selected_screen" ""
 
-    if [ "$action" == "Mirror" ]; then
-        xrandr --output $selected_screen --same-as eDP-1
-        echo "$selected_screen is now mirroring eDP-1."
-    elif [ "$action" == "Extend" ]; then
-        xrandr --output $selected_screen --auto --right-of eDP-1
-        echo "$selected_screen is now extending eDP-1."
-    else
-        echo "Exiting."
-        exit 0
-    fi
+    # Main screen management options
+    action=$(echo -e "Set Screen Order\nEnable/Disable Screen\nSet as Primary\nMirror\nExtend\nExit" | fzf --border --padding 1 --margin 1 --prompt="Select action: " --bind "j:down,k:up,q:abort" --preview "echo 'Breadcrumb: $breadcrumb\n\nCurrent screen setup:\n$(xrandr --listmonitors)\n\nControls: Use arrow keys or j/k to move, Enter to select, q to quit.'" --preview-window=down:15)
 
-    # Option to exit or return to screen settings
-    next_action=$(echo -e "Screens Page\nExit" | fzf --prompt="Select action: ")
+    update_breadcrumb "Screen Management" "$selected_screen" "$action"
 
-    if [ "$next_action" == "Screens Page" ]; then
-        arandr
-        exit 0
-    else
+    case "$action" in
+        "Set Screen Order")
+            position=$(echo -e "Left of\nRight of\nAbove\nBelow\nCancel" | fzf --border --padding 1 --margin 1 --prompt="Set screen order: " --bind "j:down,k:up,q:abort" --preview "echo 'Breadcrumb: $breadcrumb\n\nCurrent screen setup:\n$(xrandr --listmonitors)\n\nControls: Use arrow keys or j/k to move, Enter to select, q to quit.'" --preview-window=down:15)
+            if [ "$position" == "Cancel" ]; then
+                continue
+            fi
+            position_flag=$(echo "$position" | awk '{print tolower($1)}') # Convert to lowercase for xrandr
+            xrandr --output "$selected_screen" --auto --"$position_flag"-of eDP-1
+            echo "$selected_screen is now set to the $position of eDP-1."
+            update_breadcrumb "Screen Management" "$selected_screen" "Set Screen Order" "$position"
+            ;;
+
+        "Enable/Disable Screen")
+            toggle=$(echo -e "Enable\nDisable\nCancel" | fzf --border --padding 1 --margin 1 --prompt="Select option: " --bind "j:down,k:up,q:abort" --preview "echo 'Breadcrumb: $breadcrumb\n\nCurrent screen setup:\n$(xrandr --listmonitors)\n\nControls: Use arrow keys or j/k to move, Enter to select, q to quit.'" --preview-window=down:15)
+            if [ "$toggle" == "Enable" ]; then
+                xrandr --output "$selected_screen" --auto
+                echo "$selected_screen is now enabled."
+                update_breadcrumb "Screen Management" "$selected_screen" "Enable"
+            elif [ "$toggle" == "Disable" ]; then
+                xrandr --output "$selected_screen" --off
+                echo "$selected_screen is now disabled."
+                update_breadcrumb "Screen Management" "$selected_screen" "Disable"
+            fi
+            ;;
+
+        "Set as Primary")
+            xrandr --output "$selected_screen" --primary
+            echo "$selected_screen is now the primary screen."
+            update_breadcrumb "Screen Management" "$selected_screen" "Set as Primary"
+            ;;
+
+        "Mirror")
+            mirror_target=$(echo "$connected_screens" | tr ' ' '\n' | grep -v "$selected_screen" | fzf --border --padding 1 --margin 1 --prompt="Select a monitor to mirror: " --bind "j:down,k:up,q:abort" --preview "echo 'Breadcrumb: $breadcrumb\n\nCurrent screen setup:\n$(xrandr --listmonitors)\n\nControls: Use arrow keys or j/k to move, Enter to select, q to quit.'" --preview-window=down:15)
+            if [ -z "$mirror_target" ]; then
+                echo "No monitor selected to mirror."
+                continue
+            fi
+            xrandr --output "$selected_screen" --same-as "$mirror_target"
+            echo "$selected_screen is now mirroring $mirror_target."
+            update_breadcrumb "Screen Management" "$selected_screen" "Mirror" "$mirror_target"
+            ;;
+
+        "Extend")
+            xrandr --output "$selected_screen" --auto --right-of eDP-1
+            echo "$selected_screen is now extending eDP-1."
+            update_breadcrumb "Screen Management" "$selected_screen" "Extend"
+            ;;
+
+        "Exit")
+            echo "Exiting."
+            exit 0
+            ;;
+        *)
+            echo "Invalid option selected. Exiting."
+            exit 1
+            ;;
+    esac
+
+    next_action=$(echo -e "Screens Page\nExit" | fzf --height 20 --border --padding 1 --margin 1 --prompt="Select action: " --bind "j:down,k:up,q:abort" --preview "echo 'Breadcrumb: $breadcrumb\n\nCurrent screen setup:\n$(xrandr --listmonitors)\n\nControls: Use arrow keys or j/k to move, Enter to select, q to quit.'" --preview-window=down:15)
+
+    if [ "$next_action" == "Exit" ]; then
         echo "Exiting."
         exit 0
     fi
