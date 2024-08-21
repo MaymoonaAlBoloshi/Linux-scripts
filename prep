@@ -1,0 +1,16 @@
+#!/bin/bash
+
+image_folder="/home/maymoona/Pictures/Wallpapers/JPG/"
+# set monitor to mirror mode
+xrandr --output eDP-1 --auto --output HDMI-1 --auto --same-as eDP-1
+
+# set monitor to extend mode
+# xrandr --output eDP-1 --auto --output DP-1 --auto --right-of eDP-1
+images=(${image_folder}*.jpg)
+random_num=$((RANDOM % ${#images[@]}))
+
+randome_image=${images[$random_num]}
+
+wal -n -i "${randome_image}"
+nohup ~/.config/i3/polybar/launch.sh &
+feh --bg-scale "${randome_image}"

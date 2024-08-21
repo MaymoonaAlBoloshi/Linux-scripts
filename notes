@@ -1,0 +1,8 @@
+#!/bin/bash
+# Save the current directory
+current_dir=$(pwd)
+# Open the notes.md file in nvim
+nvim /home/maymoona/notes.md
+# Return to the original directory
+cd "$current_dir"
+

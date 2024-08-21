@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Duration of a single beep
+BEEP_DURATION=3
+# Pause between beeps
+PAUSE_DURATION=2
+# Number of beeps per reminder
+BEEP_COUNT=3
+# Interval for the reminder (in seconds)
+REMINDER_INTERVAL=60
+
+beep() {
+    for ((i=0; i<$BEEP_COUNT; i++)); do
+        # Play a customized beep sound
+        play -n synth 5 sine 800 fade h 0.1 0.5 0.1 vol -10dB
+        # Pause between beeps
+        sleep $PAUSE_DURATION
+    done
+}
+
+while true; do
+    beep
+    # Wait for the next reminder
+    sleep $REMINDER_INTERVAL
+done

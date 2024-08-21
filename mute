@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [[ "$1" == "y" ]]; then
+    pactl set-sink-mute @DEFAULT_SINK@ 1
+    echo "Muted"
+elif [[ "$1" == "n" ]]; then
+    pactl set-sink-mute @DEFAULT_SINK@ 0
+    echo "Unmuted"
+else
+    echo "Usage: mute [y|n]"
+    echo "y: Mute the sound"
+    echo "n: Unmute the sound"
+fi

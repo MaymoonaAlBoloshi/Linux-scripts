@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Check if an argument was passed
+if [ -z "$1" ]; then
+  echo "Usage: vol <volume_percentage>"
+  exit 1
+fi
+
+# Read the input volume percentage
+volume=$1
+
+# Handle cases where the input is negative or greater than 100
+if [ "$volume" -lt 0 ]; then
+  volume=0
+elif [ "$volume" -gt 100 ]; then
+  volume=100
+fi
+
+# Set the volume using pactl
+pactl set-sink-volume @DEFAULT_SINK@ ${volume}%
+
+echo "Volume set to ${volume}%"

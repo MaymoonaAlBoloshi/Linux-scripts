@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# Function to display the current screen setup
+display_current_setup() {
+    xrandr --listmonitors
+}
+
+# Set laptop screen as primary
+xrandr --output eDP-1 --primary
+
+while true; do
+    clear
+    echo "Current screen setup:"
+    display_current_setup
+    echo
+
+    # Get connected screens other than the laptop screen with status
+    screens=$(xrandr | grep " connected" | grep -v "eDP-1" | awk '{ print $1 }')
+
+    screen_info=()
+    for screen in $screens; do
+        mode=$(xrandr --query | grep -A1 "^$screen connected" | tail -n1 | awk '{print $1}')
+        if [ "$mode" == "disconnected" ]; then
+            status="not in use"
+        else
+            status="in use, $mode"
+        fi
+        screen_info+=("$screen ($status)")
+    done
+
+    if [ -z "$screens" ]; then
+        echo "No additional screens connected."
+        exit 1
+    fi
+
+    # Use fzf to select a screen
+    selected_screen=$(echo "${screen_info[@]}" | tr ' ' '\n' | fzf --prompt="Select a screen: " | awk -F ' ' '{print $1}')
+
+    if [ -z "$selected_screen" ]; then
+        echo "No screen selected."
+        exit 1
+    fi
+
+    # Use fzf to select an action
+    action=$(echo -e "Mirror\nExtend\nExit" | fzf --prompt="Select action: ")
+
+    if [ "$action" == "Mirror" ]; then
+        xrandr --output $selected_screen --same-as eDP-1
+        echo "$selected_screen is now mirroring eDP-1."
+    elif [ "$action" == "Extend" ]; then
+        xrandr --output $selected_screen --auto --right-of eDP-1
+        echo "$selected_screen is now extending eDP-1."
+    else
+        echo "Exiting."
+        exit 0
+    fi
+
+    # Option to exit or return to screen settings
+    next_action=$(echo -e "Screens Page\nExit" | fzf --prompt="Select action: ")
+
+    if [ "$next_action" == "Screens Page" ]; then
+        arandr
+        exit 0
+    else
+        echo "Exiting."
+        exit 0
+    fi
+done

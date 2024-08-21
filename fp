@@ -1,23 +1,26 @@
 #!/bin/bash
 
 # Parse command line arguments
-while getopts "cl" opt; do
+while getopts "clv" opt; do
   case ${opt} in
     c )
       editor="code"
+      ;;
+    v )
+      editor="nvim"
       ;;
     l )
       editor="lvim"
       ;;
     \? )
-      echo "Usage: cd_proj [-c | -l]" >&2
+      echo "Usage: cd_proj [-c | -l | -v]" >&2
       exit 1
       ;;
   esac
 done
 
 # Set the directories to search for subdirectories
-dirs=(~/Projects/main ~/Projects/side ~/Projects/course)
+dirs=(~/projects/main ~/projects/side ~/projects/course)
 
 # Use fzf to search for subdirectories one level deep in each directory
 selected_dir=$(find "${dirs[@]}" -maxdepth 1 -type d | tail -n +2 | fzf)

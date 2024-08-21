@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# Define ANSI color codes
+COLORS=('\033[0;31m' '\033[0;32m' '\033[0;33m' '\033[0;34m' '\033[0;35m' '\033[0;36m')
+NC='\033[0m' # No Color
+
+# Terminal dimensions
+width=$(tput cols)
+height=$(tput lines)
+
+# Ball position, direction, and trail
+x=1
+y=1
+dx=1
+dy=1
+trail=5
+declare -A trail_positions
+
+# Function to draw the ball and its trail
+draw_ball() {
+    clear
+    for ((i = 0; i < trail; i++)); do
+        if [ -n "${trail_positions[$i]}" ]; then
+            # Calculate fading effect
+            local opacity=$(echo "scale=2; 1 - $i * 0.2" | bc)
+            local color_index=$((${#COLORS[@]} - 1 - $i))
+            local color=${COLORS[$color_index]}
+
+            # Extract position
+            IFS=',' read -r ty tx <<< "${trail_positions[$i]}"
+
+            # Draw
+            tput cup $ty $tx
+            echo -ne "${color}\033[2;${opacity}m*\033[0m$NC"
+        fi
+    done
+    tput cup $y $x
+    echo -ne "${COLOR}\033[2;1m*\033[0m$NC"
+}
+
+# Main loop
+color_index=0
+while true; do
+    # Update ball position
+    ((x += dx))
+    ((y += dy))
+
+    # Update trail positions
+    for ((i = trail - 1; i > 0; i--)); do
+        trail_positions[$i]=${trail_positions[$((i - 1))]}
+    done
+    trail_positions[0]="$y,$x"
+
+    # Change direction if we hit a wall
+    if ((x <= 0 || x >= width - 1)); then
+        dx=$((dx * -1))
+        color_index=$(( (color_index + 1) % ${#COLORS[@]} ))
+        COLOR=${COLORS[$color_index]}
+    fi
+    if ((y <= 0 || y >= height - 1)); then
+        dy=$((dy * -1))
+        color_index=$(( (color_index + 1) % ${#COLORS[@]} ))
+        COLOR=${COLORS[$color_index]}
+    fi
+
+    # Draw the ball and trail
+    draw_ball
+
+    # Delay
+    sleep 0.05
+done
+

@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Ask for the PDF link
+read -p "Please enter the PDF link: " pdf_link
+
+# Define the Downloads directory
+download_dir="$HOME/Downloads"
+
+# Download the PDF file
+wget -P "$download_dir" "$pdf_link"
+
+# Check if the download was successful
+if [ $? -eq 0 ]; then
+    echo "Download successful! The file has been saved to $download_dir."
+else
+    echo "Download failed. Please check the URL and try again."
+fi
+
