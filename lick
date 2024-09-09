@@ -1,0 +1,21 @@
+#!/bin/bash
+
+echo "Stopping all running Docker containers..."
+docker stop $(docker ps -aq)
+
+echo "Removing all Docker containers..."
+docker rm $(docker ps -aq)
+
+echo "Removing all Docker images..."
+docker rmi $(docker images -q)
+
+echo "Removing all Docker volumes..."
+docker volume rm $(docker volume ls -q)
+
+echo "Removing all non-default Docker networks..."
+docker network rm $(docker network ls | grep -v "bridge\|host\|none" | awk '{ if (NR > 1) print $1 }')
+
+echo "Pruning everything to clean up any dangling resources..."
+docker system prune -a --volumes -f
+
+echo "Docker cleanup completed!"

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# just sets a random bg without setting up the screens
+# Set a random background without setting up the screens
 image_folder="/home/maymoona/Pictures/Wallpapers/JPG/"
 
-images=(${image_folder}*.jpg)
-random_num=$((RANDOM % ${#images[@]}))
+# Get a random image using shuf
+random_image=$(find "$image_folder" -type f -name "*.jpg" | shuf -n 1)
+echo "Setting background to $random_image"
 
-randome_image=${images[$random_num]}
-
-wal -n -i "${randome_image}"
+# Apply the selected image
+wal -n -i "$random_image"
 nohup ~/.config/i3/polybar/launch.sh &
-feh --bg-scale "${randome_image}"
+feh --bg-scale "$random_image"
