@@ -1,8 +1,97 @@
 #!/bin/bash
 # Save the current directory
 current_dir=$(pwd)
-# Open the notes.md file in nvim
-nvim /home/maymoona/todos.md
-# Return to the original directory
-cd "$current_dir"
 
+# Ensure the todos directory exists
+if [ ! -d ~/todos ]; then
+    mkdir ~/todos
+    echo "todos directory created"
+fi
+
+# If todos directory is empty, ask to create a new todo
+if [ ! "$(ls -A ~/todos)" ]; then
+    echo "No todos found. Do you want to create a new one? (y/n)"
+    read -r answer
+    if [ "$answer" = "y" ]; then
+        file_name=$(date +"%Y-%m-%d-%H-%M-%S").md
+        touch ~/todos/"$file_name"
+        echo "Created new todo: $file_name"
+    else
+        exit 0
+    fi
+fi
+
+# Function to display the menu
+show_menu() {
+    echo "Select an option:"
+    echo "n: New todo"
+    echo "e: Edit a todo"
+    echo "r: Rename a todo"
+    echo "d: Delete a todo"
+    echo "l: List todos"
+    echo "q: Quit"
+}
+
+# Main loop
+while true; do
+    show_menu
+    read -rp "Enter your choice: " choice
+
+    case $choice in
+        n)
+            # Create a new todo
+            file_name=$(date +"%Y-%m-%d-%H-%M-%S").md
+            touch ~/todos/"$file_name"
+            echo "Created new todo: $file_name"
+            ;;
+        e)
+            # Edit a todo
+            file=$(ls ~/todos | fzf)
+            if [ -n "$file" ]; then
+                nvim ~/todos/"$file"
+            else
+                echo "No file selected."
+            fi
+            ;;
+        r)
+            # Rename a todo
+            file=$(ls ~/todos | fzf)
+            if [ -n "$file" ]; then
+                echo "Enter new name for $file:"
+                read -r new_name
+                mv ~/todos/"$file" ~/todos/"$new_name"
+                echo "Renamed $file to $new_name"
+            else
+                echo "No file selected."
+            fi
+            ;;
+        d)
+            # Delete a todo
+            file=$(ls ~/todos | fzf)
+            if [ -n "$file" ]; then
+                echo "Are you sure you want to delete $file? (y/n)"
+                read -r confirm
+                if [ "$confirm" = "y" ]; then
+                    rm ~/todos/"$file"
+                    echo "Deleted $file"
+                else
+                    echo "Cancelled."
+                fi
+            else
+                echo "No file selected."
+            fi
+            ;;
+        l)
+            # List todos
+            echo "Your todos:"
+            ls ~/todos
+            ;;
+        q)
+            echo "Goodbye!"
+            break
+            ;;
+        *)
+            echo "Invalid choice. Please try again."
+            ;;
+    esac
+done
