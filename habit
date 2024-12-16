@@ -237,15 +237,15 @@ search_habits() {
         return
     fi
     # Search in habit directories (names, descriptions, logs)
-    # grep recursively in HABIT_DIR (except archive)
-    results=$(grep -ril "${query}" "${HABIT_DIR}" 2>/dev/null | grep -v "${ARCHIVE_DIR}") || true
+    results=$(grep -ril "${query}" "${HABIT_DIR}" 2>/dev/null || true)
+    # Filter out archive
+    results=$(echo "${results}" | grep -v "${ARCHIVE_DIR}" || true)
 
     if [ -z "${results}" ]; then
         echo "No matches found."
         return
     fi
 
-    # Show results in fzf
     selected_file=$(echo "${results}" | fzf \
         --prompt="Search results> " \
         --height=40% \
@@ -253,8 +253,8 @@ search_habits() {
         --ansi \
         --reverse \
         --bind j:down,k:up \
-        --preview='[ -f {} ] && bat --style=numbers --color=always --line-range :200 {} || cat {}')
-    
+        --preview='[ -f {} ] && bat --style=numbers --color=always --line-range :200 {} || cat {}') || true
+
     if [ -n "${selected_file}" ]; then
         bat_or_cat "${selected_file}"
         echo "Open in editor? (y/n)"
@@ -265,11 +265,104 @@ search_habits() {
     fi
 }
 
+show_graph() {
+    # Show a GitHub-like contribution graph for the last 35 days for a chosen habit
+    local habit
+    habit=$(select_habit)
+    if [ -z "${habit}" ]; then
+        echo "No habit selected."
+        return
+    fi
+
+    # We'll consider last 35 days
+    DAYS=35
+    today_ts=$(date +%s)
+    # We'll store line counts per day
+    # For each of the last 35 days, check if a log file exists
+    # and count the lines of progress (excluding the title line)
+    declare -a counts
+    for ((i=DAYS-1; i>=0; i--)); do
+        day_ts=$(( today_ts - i*86400 ))
+        day_str=$(date -d "@$day_ts" "${DATE_FORMAT}")
+        log_file="${HABIT_DIR}/${habit}/logs/${day_str}.md"
+        if [ -f "${log_file}" ]; then
+            # Count lines minus 1 for the title
+            lines=$(($(wc -l < "${log_file}") - 1))
+            [ $lines -lt 0 ] && lines=0
+        else
+            lines=0
+        fi
+        counts+=("$lines")
+    done
+
+    # GitHub style: 7 columns (weeks) by rows (days)
+    # We'll do 5 weeks (35 days) by 7 rows (one column per week)
+    # Actually, GitHub graph is days as rows and weeks as columns
+    # The earliest day is top-left. We'll assume Monday start or just print all?
+    # We'll assume the first element in counts is oldest day. 
+    # We'll map them into a 7(rows) x 5(columns) grid since we have 35 days.
+
+    # Color scale based on lines:
+    # 0 = no activity: blank
+    # 1-2 lines: light green
+    # 3-5 lines: medium green
+    # >5 lines: dark green
+
+    color_cell() {
+        local c=$1
+        if [ "$c" -eq 0 ]; then
+            echo -ne "  "
+        elif [ "$c" -le 2 ]; then
+            # Light green background
+            echo -ne "\033[48;5;120m  \033[0m"
+        elif [ "$c" -le 5 ]; then
+            # Medium green background
+            echo -ne "\033[48;5;34m  \033[0m"
+        else
+            # Dark green background
+            echo -ne "\033[48;5;28m  \033[0m"
+        fi
+    }
+
+    echo -e "${CYAN}Last 35 days of activity for '${habit}':${NC}"
+    echo "Each cell represents a day. Left = oldest, Right = most recent."
+    echo "Color intensity corresponds to how much you logged that day."
+    echo
+
+    # Print rows (7 rows for days of the week), each column is a week.
+    # counts[0] is oldest day. We want to fill top to bottom, left to right.
+    # We'll fill columns by weeks. 
+    # Column count = 5, row count = 7
+    # Index: counts[0] is oldest. That should be top-left?
+    # We'll assign:
+    # For col in 0 to 4:
+    #   For row in 0 to 6:
+    #     index = col*7 + row
+    # We'll print row by row though, so we must invert:
+    # Actually, GitHub is day rows. We'll print row by row:
+    # For row in 0 to 6:
+    #   For col in 0 to 4:
+    #     index = col*7 + row
+    # print that cell
+
+    for row in {0..6}; do
+        for col in {0..4}; do
+            idx=$((col*7 + row))
+            color_cell "${counts[$idx]}"
+            echo -n " "
+        done
+        echo
+    done
+
+    echo
+}
+
 help_menu() {
     echo -e "${GREEN}Help:${NC}"
     echo "Use the interactive menu to manage your habits."
     echo "Navigate with j/k or arrow keys in the menus."
-    echo "This tool helps you to track daily progress on your habits."
+    echo "Mark daily progress, view logs, search, and archive habits."
+    echo "Use 'g' to view a GitHub-like contribution graph of the last 35 days."
 }
 
 banner
@@ -283,6 +376,7 @@ menu_items=(
     "d: Delete habit"
     "s: Search habits"
     "a: Archive habit"
+    "g: Show graph"
     "h: Help"
     "q: Quit"
 )
@@ -326,6 +420,9 @@ while true; do
             ;;
         a)
             archive_habit
+            ;;
+        g)
+            show_graph
             ;;
         h)
             help_menu
