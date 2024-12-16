@@ -1,0 +1,342 @@
+#!/usr/bin/env bash
+
+
+set -euo pipefail
+IFS=$'\n\t'
+
+HABIT_DIR="${HOME}/.habits"
+ARCHIVE_DIR="${HABIT_DIR}/archive"
+EDITOR="${EDITOR:-nvim}"
+DATE_FORMAT="+%Y-%m-%d"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Check for fzf
+if ! command -v fzf &>/dev/null; then
+    echo -e "${RED}fzf is required but not installed. Please install fzf first.${NC}"
+    exit 1
+fi
+
+mkdir -p "${HABIT_DIR}"
+mkdir -p "${ARCHIVE_DIR}"
+
+trap "echo -e '\n${RED}Aborted.${NC}'; exit 1" INT
+
+banner() {
+    echo -e "${CYAN}"
+    echo "======================================"
+    echo "           HABIT MANAGER"
+    echo "======================================"
+    echo -e "${NC}"
+}
+
+confirm() {
+    local prompt="$1"
+    echo -e "${YELLOW}${prompt}${NC} (y/n)"
+    read -r c
+    [ "${c}" = "y" ]
+}
+
+bat_or_cat() {
+    if command -v bat &>/dev/null; then
+        bat --style=numbers --color=always --line-range :200 "$@"
+    else
+        cat "$@"
+    fi
+}
+
+habit_preview_cmd() {
+    # For preview inside fzf (habit.md)
+    if command -v bat &>/dev/null; then
+        echo "bat --style=numbers --color=always --line-range :200 ${HABIT_DIR}/{}/*.md"
+    else
+        echo "cat ${HABIT_DIR}/{}/*.md"
+    fi
+}
+
+log_preview_cmd() {
+    # For previewing log entries
+    if command -v bat &>/dev/null; then
+        echo "bat --style=numbers --color=always --line-range :200 {}"
+    else
+        echo "cat {}"
+    fi
+}
+
+select_habit() {
+    local habit
+    habit=$(find "${HABIT_DIR}" -mindepth 1 -maxdepth 1 -type d ! -name "archive" -exec basename {} \; \
+        | fzf --prompt="Select a habit> " --exit-0 --height=40% --border --ansi --reverse --bind j:down,k:up \
+        --preview="$(habit_preview_cmd)") || true
+    echo "${habit}"
+}
+
+habit_exists() {
+    [ -d "${HABIT_DIR}/$1" ]
+}
+
+create_habit() {
+    echo "Enter habit name:"
+    read -r name
+    if [ -z "${name}" ]; then
+        echo "No name provided."
+        return
+    fi
+    if habit_exists "${name}"; then
+        echo -e "${YELLOW}Habit '${name}' already exists.${NC}"
+        return
+    fi
+    mkdir -p "${HABIT_DIR}/${name}"
+    echo "Enter a short description (optional):"
+    read -r desc
+    echo "${desc}" > "${HABIT_DIR}/${name}/habit.md"
+    mkdir -p "${HABIT_DIR}/${name}/logs"
+    echo -e "${GREEN}Created new habit: ${name}${NC}"
+}
+
+edit_habit() {
+    local habit
+    habit=$(select_habit)
+    if [ -n "${habit}" ]; then
+        "${EDITOR}" "${HABIT_DIR}/${habit}/habit.md"
+    else
+        echo "No habit selected."
+    fi
+}
+
+rename_habit() {
+    local habit
+    habit=$(select_habit)
+    if [ -z "${habit}" ]; then
+        echo "No habit selected."
+        return
+    fi
+    echo "Enter new name for ${habit}:"
+    read -r new_name
+    if [ -z "${new_name}" ]; then
+        echo "No new name provided."
+        return
+    fi
+    if habit_exists "${new_name}"; then
+        echo -e "${YELLOW}A habit with this name already exists.${NC}"
+        return
+    fi
+    mv "${HABIT_DIR}/${habit}" "${HABIT_DIR}/${new_name}"
+    echo -e "${GREEN}Renamed ${habit} to ${new_name}${NC}"
+}
+
+delete_habit() {
+    local habit
+    habit=$(select_habit)
+    if [ -z "${habit}" ]; then
+        echo "No habit selected."
+        return
+    fi
+    if confirm "Are you sure you want to delete '${habit}'?"; then
+        rm -rf "${HABIT_DIR}/${habit}"
+        echo -e "${RED}Deleted ${habit}${NC}"
+    else
+        echo "Cancelled."
+    fi
+}
+
+archive_habit() {
+    local habit
+    habit=$(select_habit)
+    if [ -z "${habit}" ]; then
+        echo "No habit selected."
+        return
+    fi
+    if confirm "Archive habit '${habit}'?"; then
+        mv "${HABIT_DIR}/${habit}" "${ARCHIVE_DIR}/${habit}"
+        echo -e "${GREEN}Archived ${habit}${NC}"
+    else
+        echo "Cancelled."
+    fi
+}
+
+mark_progress() {
+    local habit
+    habit=$(select_habit)
+    if [ -z "${habit}" ]; then
+        echo "No habit selected."
+        return
+    fi
+    local today
+    today=$(date "${DATE_FORMAT}")
+    log_file="${HABIT_DIR}/${habit}/logs/${today}.md"
+
+    if [ -f "${log_file}" ]; then
+        echo "Log for today already exists. Edit it? (y/n)"
+        read -r edit_choice
+        if [ "${edit_choice}" = "y" ]; then
+            "${EDITOR}" "${log_file}"
+        else
+            echo "No changes made."
+        fi
+    else
+        echo "Describe today's progress for '${habit}':"
+        echo "(Leave empty for just marking done)"
+        read -r progress
+        if [ -z "${progress}" ]; then
+            progress="Completed"
+        fi
+        echo "# ${habit} - ${today}" > "${log_file}"
+        echo "${progress}" >> "${log_file}"
+        echo -e "${GREEN}Progress marked for ${habit} on ${today}.${NC}"
+        "${EDITOR}" "${log_file}"
+    fi
+}
+
+view_logs() {
+    local habit
+    habit=$(select_habit)
+    if [ -z "${habit}" ]; then
+        echo "No habit selected."
+        return
+    fi
+    # Select a log file
+    logs=$(find "${HABIT_DIR}/${habit}/logs" -type f -name "*.md" 2>/dev/null | sort)
+    if [ -z "${logs}" ]; then
+        echo "No logs found for ${habit}."
+        return
+    fi
+
+    selected_log=$(echo "${logs}" | fzf \
+        --prompt="Select a log> " \
+        --height=40% \
+        --border \
+        --ansi \
+        --reverse \
+        --bind j:down,k:up \
+        --preview="$(log_preview_cmd)") || true
+
+    if [ -n "${selected_log}" ]; then
+        bat_or_cat "${selected_log}"
+        echo "Open in editor? (y/n)"
+        read -r edit_choice
+        if [ "${edit_choice}" = "y" ]; then
+            "${EDITOR}" "${selected_log}"
+        fi
+    else
+        echo "No log selected."
+    fi
+}
+
+search_habits() {
+    echo "Enter search query:"
+    read -r query
+    if [ -z "${query}" ]; then
+        echo "No query entered."
+        return
+    fi
+    # Search in habit directories (names, descriptions, logs)
+    # grep recursively in HABIT_DIR (except archive)
+    results=$(grep -ril "${query}" "${HABIT_DIR}" 2>/dev/null | grep -v "${ARCHIVE_DIR}") || true
+
+    if [ -z "${results}" ]; then
+        echo "No matches found."
+        return
+    fi
+
+    # Show results in fzf
+    selected_file=$(echo "${results}" | fzf \
+        --prompt="Search results> " \
+        --height=40% \
+        --border \
+        --ansi \
+        --reverse \
+        --bind j:down,k:up \
+        --preview='[ -f {} ] && bat --style=numbers --color=always --line-range :200 {} || cat {}')
+    
+    if [ -n "${selected_file}" ]; then
+        bat_or_cat "${selected_file}"
+        echo "Open in editor? (y/n)"
+        read -r edit_choice
+        if [ "${edit_choice}" = "y" ]; then
+            "${EDITOR}" "${selected_file}"
+        fi
+    fi
+}
+
+help_menu() {
+    echo -e "${GREEN}Help:${NC}"
+    echo "Use the interactive menu to manage your habits."
+    echo "Navigate with j/k or arrow keys in the menus."
+    echo "This tool helps you to track daily progress on your habits."
+}
+
+banner
+
+menu_items=(
+    "n: New habit"
+    "m: Mark today's progress"
+    "v: View logs"
+    "e: Edit habit"
+    "r: Rename habit"
+    "d: Delete habit"
+    "s: Search habits"
+    "a: Archive habit"
+    "h: Help"
+    "q: Quit"
+)
+
+while true; do
+    choice=$(printf '%s\n' "${menu_items[@]}" | fzf \
+        --prompt="Choose an action> " \
+        --height=40% \
+        --border \
+        --ansi \
+        --reverse \
+        --disabled \
+        --bind j:down,k:up \
+        --bind /:ignore,?:ignore \
+        --bind a:ignore,b:ignore,c:ignore,d:ignore,e:ignore,f:ignore,g:ignore,h:ignore,i:ignore,j:down,k:up,l:ignore,m:ignore,n:ignore,o:ignore,p:ignore,q:ignore,r:ignore,s:ignore,t:ignore,u:ignore,v:ignore,w:ignore,x:ignore,y:ignore,z:ignore \
+    ) || break
+
+    action="${choice%%:*}"
+
+    case "${action}" in
+        n)
+            create_habit
+            ;;
+        m)
+            mark_progress
+            ;;
+        v)
+            view_logs
+            ;;
+        e)
+            edit_habit
+            ;;
+        r)
+            rename_habit
+            ;;
+        d)
+            delete_habit
+            ;;
+        s)
+            search_habits
+            ;;
+        a)
+            archive_habit
+            ;;
+        h)
+            help_menu
+            ;;
+        q)
+            echo -e "${GREEN}Goodbye!${NC}"
+            break
+            ;;
+        *)
+            echo "Invalid choice. Please try again."
+            ;;
+    esac
+    echo
+done
