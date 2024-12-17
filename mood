@@ -1,22 +1,5 @@
 #!/usr/bin/env bash
 
-# "WOOOOW" Mood Tracker System with gum-based TUI and Enhanced Graph & Analytics
-#
-# Changes:
-#   - Colored background graph for last 30 days
-#   - Analytics option for last 30 days:
-#     * Average mood rating
-#     * Count of each rating (1-5)
-#     * Best (highest) and worst (lowest) rated days
-#     * Weekend vs weekday comparison
-#
-# Dependencies:
-#   - gum: https://github.com/charmbracelet/gum
-#   - fzf
-#   - awk (usually installed by default)
-#   - Optional: bat for pretty previews
-#
-# Note: Ensure your terminal supports 256 colors for the colored graph.
 
 set -euo pipefail
 IFS=$'\n\t'
