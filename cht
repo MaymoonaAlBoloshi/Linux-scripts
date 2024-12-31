@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
 
-# Check if the correct number of arguments is provided
-if [[ $# -lt 2 ]]; then
-    echo "Usage: $0 <tool/language> <query>"
+# Ensure required commands are installed
+if ! command -v gum &> /dev/null; then
+    echo "gum is required but not installed. Please install it and try again."
     exit 1
 fi
 
-# Extract the tool/language and the query
-tool="$1"
-query="$2"
+if ! command -v sed &> /dev/null; then
+    echo "sed is required but not installed. Please install it and try again."
+    exit 1
+fi
+
+if ! command -v less &> /dev/null && ! command -v gum &> /dev/null; then
+    echo "Either less or gum must be installed. Please install one of them and try again."
+    exit 1
+fi
+
+# Define the tools and utils
+languages=("Go" "Rust" "Zig" "TypeScript" "Python")
+utils=("awk" "sed" "grep" "find" "cut" "sort" "uniq" "xargs" "curl" "wget")
 
 # Function to URL encode the query
 urlencode() {
@@ -22,8 +32,25 @@ urlencode() {
     done
 }
 
+# Prompt the user to select between tools or utils
+search_type=$(gum choose "Languages" "Utilities")
+
+# Based on the selection, display the list and allow selection
+if [[ $search_type == "Languages" ]]; then
+    selected_item=$(printf "%s\n" "${languages[@]}" | gum filter --placeholder "Select a programming language")
+else
+    selected_item=$(printf "%s\n" "${utils[@]}" | gum filter --placeholder "Select a Linux utility")
+fi
+
+# Ask the user to enter a query
+query=$(gum input --placeholder "Enter your query for $selected_item")
+
 # URL encode the query
 encoded_query=$(urlencode "$query")
 
-# Run the search and display the result using less
-curl -s cht.sh/$tool/$encoded_query | less
+# Perform the search, clean the output, and display it using less or gum pager
+if command -v less &> /dev/null; then
+    curl -s cht.sh/"$selected_item"/"$encoded_query" | sed -r "s/\x1B\[[0-9;]*[mGK]//g" | less
+else
+    curl -s cht.sh/"$selected_item"/"$encoded_query" | sed -r "s/\x1B\[[0-9;]*[mGK]//g" | gum pager
+fi
